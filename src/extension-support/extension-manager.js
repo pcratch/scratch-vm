@@ -1,6 +1,7 @@
 const dispatch = require('../dispatch/central-dispatch');
 const log = require('../util/log');
 const maybeFormatMessage = require('../util/maybe-format-message');
+const formatMessage = require('format-message');
 
 const BlockType = require('./block-type');
 
@@ -140,6 +141,8 @@ class ExtensionManager {
      * @returns {Promise} resolved once the extension is loaded and initialized or rejected on failure
      */
     loadExtensionURL (extensionURL) {
+        const runtime = dispatch.services.runtime;
+        runtime.formatMessage = formatMessage;
         if (builtinExtensions.hasOwnProperty(extensionURL)) {
             /** @TODO dupe handling for non-builtin extensions. See commit 670e51d33580e8a2e852b3b038bb3afc282f81b9 */
             if (this.isExtensionLoaded(extensionURL)) {
@@ -155,13 +158,62 @@ class ExtensionManager {
             return Promise.resolve();
         }
 
-        return new Promise((resolve, reject) => {
-            // If we `require` this at the global level it breaks non-webpack targets, including tests
-            const ExtensionWorker = require('worker-loader?name=extension-worker.js!./extension-worker');
-
-            this.pendingExtensions.push({extensionURL, resolve, reject});
-            dispatch.addWorker(new ExtensionWorker());
-        });
+        // To access the runtime even in outer extensions, it loaded by dynamic import() istead of extension-worker.
+        const fetchPackageController = new AbortController();
+        setTimeout(() => fetchPackageController.abort(), 5000);
+        return fetch(new URL('package.json', extensionURL), {signal: fetchPackageController.signal})
+            .then(response => response.json())
+            .then(extPackage => {
+                const entryURI = extPackage.scratchExtension.entry;
+                const importEntry = import(/* webpackIgnore: true */ new URL(entryURI, extensionURL))
+                    .then(entryModule => entryModule.entry);
+                const blockURI = extPackage.scratchExtension.block;
+                const importBlock = import(/* webpackIgnore: true */ new URL(blockURI, extensionURL))
+                    .then(blockModule => blockModule.block);
+                return Promise.all([importEntry, importBlock]);
+            })
+            .then(imported => {
+                const entry = imported[0];
+                entry.extensionURL = extensionURL;
+                const block = new imported[1](runtime);
+                const extensionID = block.getInfo().id;
+                if (entry.extensionId !== extensionID) {
+                // Reject by the security risk.
+                    const message =
+                    `Rejected the extension mismatch ID entry: '${entry.extensionId}' block: '${extensionID}'`;
+                    log.warn(message);
+                    return Promise.resolve();
+                }
+                block.extensionURL = extensionURL;
+                if (this.isExtensionLoaded(extensionID)) {
+                // Remove from loaded extensions
+                    const oldServiceName = this._loadedExtensions.get(extensionID);
+                    this._loadedExtensions.delete(extensionID);
+                    // Remove from dispatcher
+                    delete dispatch.services[oldServiceName];
+                    // Remove from extension library
+                    const oldEntryIndex = this.extensionLibraryContent
+                        .findIndex(libEntry => libEntry.extensionId === extensionID);
+                    if (oldEntryIndex >= 0) {
+                        this.extensionLibraryContent.splice(oldEntryIndex, 1);
+                    }
+                    // Remove from block info
+                    const oldeBlockInfoIndex = runtime._blockInfo.findIndex(info => info.id === extensionID);
+                    if (oldeBlockInfoIndex >= 0) {
+                        runtime._blockInfo.splice(oldeBlockInfoIndex, 1);
+                    }
+                }
+                const serviceName = this._registerInternalExtension(block);
+                this._loadedExtensions.set(extensionID, serviceName);
+                if (this.extensionLibraryContent) {
+                    this.extensionLibraryContent.unshift(entry);
+                }
+                return Promise.resolve();
+            })
+            .catch(error => {
+                log.log(error);
+                return Promise.reject(error);
+            });
     }
 
     /**
