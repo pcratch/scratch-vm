@@ -94,6 +94,7 @@ class ExtensionManager {
          * @type {Runtime}
          */
         this.runtime = runtime;
+        this.runtime.formatMessage = formatMessage;
 
         dispatch.setService('extensions', this).catch(e => {
             log.error(`ExtensionManager was unable to register extension service: ${JSON.stringify(e)}`);
@@ -136,13 +137,77 @@ class ExtensionManager {
     }
 
     /**
+     * Fetch and return entry object and block class of the extension.
+     * @param {string} extensionURL - URL for module of the extension.
+     * @returns {[entry <object>, blockClass <class>]} - Array with entry and block class of the extension.
+     */
+    fetchExtension (extensionURL) {
+        const fetchPackageController = new AbortController();
+        setTimeout(() => fetchPackageController.abort(), 5000);
+        return fetch(new URL('package.json', extensionURL), {signal: fetchPackageController.signal})
+            .then(response => response.json())
+            .then(extPackage => {
+                const entryURI = extPackage.scratchExtension.entry;
+                const importEntry = import(/* webpackIgnore: true */ new URL(entryURI, extensionURL))
+                    .then(entryModule => entryModule.entry);
+                const blockURI = extPackage.scratchExtension.block;
+                const importBlock = import(/* webpackIgnore: true */ new URL(blockURI, extensionURL))
+                    .then(blockModule => blockModule.block);
+                return Promise.all([importEntry, importBlock]);
+            })
+            .then(([entry, blockClass]) => {
+                entry.extensionURL = extensionURL;
+                return [entry, blockClass];
+            });
+    }
+
+    /**
+     * Instanceate new block object and register that in the runtime.
+     * @param {object} entry - Entry object to register.
+     * @param {class} blockClass - Class of block object to regiser.
+     * @returns {object} Block object which was registered.
+     */
+    registerExtensionBlock (entry, blockClass) {
+        const runtime = this.runtime;
+        const block = new blockClass(runtime);
+        const extensionID = block.getInfo().id;
+        if (entry.extensionId !== extensionID) {
+            // Reject by the security risk.
+            throw new Error(`Extension ID mismatch entry: '${entry.extensionId}' block: '${extensionID}'`);
+        }
+        block.extensionURL = entry.extensionURL;
+        if (this.isExtensionLoaded(extensionID)) {
+            // Remove from loaded extensions
+            const oldServiceName = this._loadedExtensions.get(extensionID);
+            this._loadedExtensions.delete(extensionID);
+            // Remove from dispatcher
+            delete dispatch.services[oldServiceName];
+            // Remove from extension library
+            const oldEntryIndex = this.extensionLibraryContent
+                .findIndex(libEntry => libEntry.extensionId === extensionID);
+            if (oldEntryIndex >= 0) {
+                this.extensionLibraryContent.splice(oldEntryIndex, 1);
+            }
+            // Remove from block info
+            const oldeBlockInfoIndex = runtime._blockInfo.findIndex(info => info.id === extensionID);
+            if (oldeBlockInfoIndex >= 0) {
+                runtime._blockInfo.splice(oldeBlockInfoIndex, 1);
+            }
+        }
+        const serviceName = this._registerInternalExtension(block);
+        this._loadedExtensions.set(extensionID, serviceName);
+        if (this.extensionLibraryContent) {
+            this.extensionLibraryContent.unshift(entry);
+        }
+        return block;
+    }
+
+    /**
      * Load an extension by URL or internal extension ID
      * @param {string} extensionURL - the URL for the extension to load OR the ID of an internal extension
      * @returns {Promise} resolved once the extension is loaded and initialized or rejected on failure
      */
     loadExtensionURL (extensionURL) {
-        const runtime = dispatch.services.runtime;
-        runtime.formatMessage = formatMessage;
         if (builtinExtensions.hasOwnProperty(extensionURL)) {
             /** @TODO dupe handling for non-builtin extensions. See commit 670e51d33580e8a2e852b3b038bb3afc282f81b9 */
             if (this.isExtensionLoaded(extensionURL)) {
@@ -159,55 +224,9 @@ class ExtensionManager {
         }
 
         // To access the runtime even in outer extensions, it loaded by dynamic import() istead of extension-worker.
-        const fetchPackageController = new AbortController();
-        setTimeout(() => fetchPackageController.abort(), 5000);
-        return fetch(new URL('package.json', extensionURL), {signal: fetchPackageController.signal})
-            .then(response => response.json())
-            .then(extPackage => {
-                const entryURI = extPackage.scratchExtension.entry;
-                const importEntry = import(/* webpackIgnore: true */ new URL(entryURI, extensionURL))
-                    .then(entryModule => entryModule.entry);
-                const blockURI = extPackage.scratchExtension.block;
-                const importBlock = import(/* webpackIgnore: true */ new URL(blockURI, extensionURL))
-                    .then(blockModule => blockModule.block);
-                return Promise.all([importEntry, importBlock]);
-            })
-            .then(imported => {
-                const entry = imported[0];
-                entry.extensionURL = extensionURL;
-                const block = new imported[1](runtime);
-                const extensionID = block.getInfo().id;
-                if (entry.extensionId !== extensionID) {
-                // Reject by the security risk.
-                    const message =
-                    `Rejected the extension mismatch ID entry: '${entry.extensionId}' block: '${extensionID}'`;
-                    log.warn(message);
-                    return Promise.resolve();
-                }
-                block.extensionURL = extensionURL;
-                if (this.isExtensionLoaded(extensionID)) {
-                // Remove from loaded extensions
-                    const oldServiceName = this._loadedExtensions.get(extensionID);
-                    this._loadedExtensions.delete(extensionID);
-                    // Remove from dispatcher
-                    delete dispatch.services[oldServiceName];
-                    // Remove from extension library
-                    const oldEntryIndex = this.extensionLibraryContent
-                        .findIndex(libEntry => libEntry.extensionId === extensionID);
-                    if (oldEntryIndex >= 0) {
-                        this.extensionLibraryContent.splice(oldEntryIndex, 1);
-                    }
-                    // Remove from block info
-                    const oldeBlockInfoIndex = runtime._blockInfo.findIndex(info => info.id === extensionID);
-                    if (oldeBlockInfoIndex >= 0) {
-                        runtime._blockInfo.splice(oldeBlockInfoIndex, 1);
-                    }
-                }
-                const serviceName = this._registerInternalExtension(block);
-                this._loadedExtensions.set(extensionID, serviceName);
-                if (this.extensionLibraryContent) {
-                    this.extensionLibraryContent.unshift(entry);
-                }
+        return this.fetchExtension(extensionURL)
+            .then(([entry, blockClass]) => {
+                this.registerExtensionBlock(entry, blockClass);
                 return Promise.resolve();
             })
             .catch(error => {
