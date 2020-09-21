@@ -137,9 +137,9 @@ class ExtensionManager {
     }
 
     /**
-     * Fetch and return entry object and block class of the extension.
+     * Fetch URL and return entry object and block class of the extension.
      * @param {string} extensionURL - URL for module of the extension.
-     * @returns {[entry <object>, blockClass <class>]} - Array with entry and block class of the extension.
+     * @returns {{entry: object, blockClass: BlockClass}} Array with entry and block class of the extension.
      */
     fetchExtension (extensionURL) {
         const fetchPackageController = new AbortController();
@@ -147,17 +147,14 @@ class ExtensionManager {
         return fetch(new URL('package.json', extensionURL), {signal: fetchPackageController.signal})
             .then(response => response.json())
             .then(extPackage => {
-                const entryURI = extPackage.scratchExtension.entry;
-                const importEntry = import(/* webpackIgnore: true */ new URL(entryURI, extensionURL))
-                    .then(entryModule => entryModule.entry);
-                const blockURI = extPackage.scratchExtension.block;
-                const importBlock = import(/* webpackIgnore: true */ new URL(blockURI, extensionURL))
-                    .then(blockModule => blockModule.block);
-                return Promise.all([importEntry, importBlock]);
+                const moduleURI = extPackage.module;
+                return import(/* webpackIgnore: true */ new URL(moduleURI, extensionURL));
             })
-            .then(([entry, blockClass]) => {
+            .then(module => {
+                const entry = module.entry;
                 entry.extensionURL = extensionURL;
-                return [entry, blockClass];
+                const blockClass = module.blockClass;
+                return {entry: entry, blockClass: blockClass};
             });
     }
 
@@ -175,7 +172,9 @@ class ExtensionManager {
             // Reject by the security risk.
             throw new Error(`Extension ID mismatch entry: '${entry.extensionId}' block: '${extensionID}'`);
         }
-        block.extensionURL = entry.extensionURL;
+        if (this.extensionLibraryContent) {
+            this.extensionLibraryContent.unshift(entry);
+        }
         if (this.isExtensionLoaded(extensionID)) {
             // Remove from loaded extensions
             const oldServiceName = this._loadedExtensions.get(extensionID);
@@ -196,9 +195,6 @@ class ExtensionManager {
         }
         const serviceName = this._registerInternalExtension(block);
         this._loadedExtensions.set(extensionID, serviceName);
-        if (this.extensionLibraryContent) {
-            this.extensionLibraryContent.unshift(entry);
-        }
         return block;
     }
 
@@ -225,8 +221,9 @@ class ExtensionManager {
 
         // To access the runtime even in outer extensions, it loaded by dynamic import() istead of extension-worker.
         return this.fetchExtension(extensionURL)
-            .then(([entry, blockClass]) => {
-                this.registerExtensionBlock(entry, blockClass);
+            .then(({entry, blockClass}) => {
+                const block = this.registerExtensionBlock(entry, blockClass);
+                block.extensionURL = extensionURL;
                 return Promise.resolve();
             })
             .catch(error => {
