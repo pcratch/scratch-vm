@@ -142,14 +142,7 @@ class ExtensionManager {
      * @returns {{entry: object, blockClass: BlockClass}} Array with entry and block class of the extension.
      */
     fetchExtension (extensionURL) {
-        const fetchPackageController = new AbortController();
-        setTimeout(() => fetchPackageController.abort(), 5000);
-        return fetch(new URL('package.json', extensionURL), {signal: fetchPackageController.signal})
-            .then(response => response.json())
-            .then(extPackage => {
-                const moduleURI = extPackage.module;
-                return import(/* webpackIgnore: true */ new URL(moduleURI, extensionURL));
-            })
+        return import(/* webpackIgnore: true */ extensionURL)
             .then(module => {
                 const entry = module.entry;
                 entry.extensionURL = extensionURL;
