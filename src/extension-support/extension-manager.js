@@ -186,6 +186,7 @@ class ExtensionManager {
                 runtime._blockInfo.splice(oldeBlockInfoIndex, 1);
             }
         }
+        block.extensionURL = entry.extensionURL;
         const serviceName = this._registerInternalExtension(block);
         this._loadedExtensions.set(extensionID, serviceName);
         return block;
@@ -215,8 +216,7 @@ class ExtensionManager {
         // To access the runtime even in outer extensions, it loaded by dynamic import() istead of extension-worker.
         return this.fetchExtension(extensionURL)
             .then(({entry, blockClass}) => {
-                const block = this.registerExtensionBlock(entry, blockClass);
-                block.extensionURL = extensionURL;
+                this.registerExtensionBlock(entry, blockClass);
                 return Promise.resolve();
             })
             .catch(error => {
