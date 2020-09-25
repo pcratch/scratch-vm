@@ -165,21 +165,12 @@ class ExtensionManager {
             // Reject by the security risk.
             throw new Error(`Extension ID mismatch entry: '${entry.extensionId}' block: '${extensionID}'`);
         }
-        if (this.extensionLibraryContent) {
-            this.extensionLibraryContent.unshift(entry);
-        }
         if (this.isExtensionLoaded(extensionID)) {
             // Remove from loaded extensions
             const oldServiceName = this._loadedExtensions.get(extensionID);
             this._loadedExtensions.delete(extensionID);
             // Remove from dispatcher
             delete dispatch.services[oldServiceName];
-            // Remove from extension library
-            const oldEntryIndex = this.extensionLibraryContent
-                .findIndex(libEntry => libEntry.extensionId === extensionID);
-            if (oldEntryIndex >= 0) {
-                this.extensionLibraryContent.splice(oldEntryIndex, 1);
-            }
             // Remove from block info
             const oldeBlockInfoIndex = runtime._blockInfo.findIndex(info => info.id === extensionID);
             if (oldeBlockInfoIndex >= 0) {
@@ -189,6 +180,15 @@ class ExtensionManager {
         block.extensionURL = entry.extensionURL;
         const serviceName = this._registerInternalExtension(block);
         this._loadedExtensions.set(extensionID, serviceName);
+        const oldEntryIndex = this.extensionLibraryContent
+            .findIndex(libEntry => libEntry.extensionId === extensionID);
+        if (oldEntryIndex >= 0) {
+            // Remove from extension library
+            this.extensionLibraryContent.splice(oldEntryIndex, 1);
+        }
+        if (this.extensionLibraryContent) {
+            this.extensionLibraryContent.unshift(entry);
+        }
         return block;
     }
 
