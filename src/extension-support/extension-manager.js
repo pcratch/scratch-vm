@@ -147,6 +147,7 @@ class ExtensionManager {
                 const entry = module.entry;
                 entry.extensionURL = extensionURL;
                 const blockClass = module.blockClass;
+                blockClass.extensionURL = extensionURL;
                 return {entry: entry, blockClass: blockClass};
             });
     }
@@ -177,7 +178,6 @@ class ExtensionManager {
                 runtime._blockInfo.splice(oldeBlockInfoIndex, 1);
             }
         }
-        block.extensionURL = entry.extensionURL;
         const serviceName = this._registerInternalExtension(block);
         this._loadedExtensions.set(extensionID, serviceName);
         const oldEntryIndex = this.extensionLibraryContent
@@ -210,6 +210,16 @@ class ExtensionManager {
             const extensionInstance = new extension(this.runtime);
             const serviceName = this._registerInternalExtension(extensionInstance);
             this._loadedExtensions.set(extensionURL, serviceName);
+            return Promise.resolve();
+        }
+
+        const builtinClassFunc = Object.values(builtinExtensions)
+            .find(blockClassFunc => blockClassFunc().extensionURL === extensionURL);
+        if (builtinClassFunc) {
+            const blockClass = builtinClassFunc();
+            const block = new blockClass(this.runtime);
+            const serviceName = this._registerInternalExtension(block);
+            this._loadedExtensions.set(blockClass.EXTENSION_ID, serviceName);
             return Promise.resolve();
         }
 
