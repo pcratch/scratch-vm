@@ -152,7 +152,7 @@ class ExtensionManager {
             });
     }
 
-    addBultinExtension(entry, blockClass) {
+    addBultinExtension (entry, blockClass) {
         builtinExtensions[entry.extensionId] = () => blockClass;
         this.extensionLibraryContent.unshift(entry);
     }
