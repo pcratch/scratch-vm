@@ -152,6 +152,11 @@ class ExtensionManager {
             });
     }
 
+    addBultinExtension(entry, blockClass) {
+        builtinExtensions[entry.extensionId] = () => blockClass;
+        this.extensionLibraryContent.unshift(entry);
+    }
+
     /**
      * Instanceate new block object and register that in the runtime.
      * @param {object} entry - Entry object to register.
