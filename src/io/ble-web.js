@@ -157,8 +157,11 @@ class WebBLE {
         return this._server.getPrimaryService(serviceId)
             .then(service => service.getCharacteristic(characteristicId))
             .then(characteristic => {
-                if (withResponse) {
+                if (withResponse && characteristic.writeValueWithResponse) {
                     return characteristic.writeValueWithResponse(value);
+                }
+                if (characteristic.writeValueWithoutResponse) {
+                    return characteristic.writeValueWithoutResponse(value);
                 }
                 return characteristic.writeValue(value);
             });
