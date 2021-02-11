@@ -84,10 +84,10 @@ class WebBLE {
     disconnect () {
         if (!this._server) return;
         this._server.disconnect();
+        this._disconnected = true;
         this._server = null;
         this._device = null;
         this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
-        this._disconnected = true;
     }
 
     /**
