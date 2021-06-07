@@ -557,6 +557,15 @@ const serialize = function (runtime, targetId) {
     // Assemble extension list
     obj.extensions = Array.from(extensions);
 
+    // Assemble map of ID -> URL for extensions.
+    obj.extensionURLs = [];
+    obj.extensions.forEach(id => {
+        const extensionInfo = runtime._blockInfo.find(info => info.id === id);
+        if (extensionInfo){
+            obj.extensionURLs.push([id, extensionInfo.extensionURL]);
+        }
+    });
+
     // Assemble metadata
     const meta = Object.create(null);
     meta.semver = '3.0.0';
@@ -1235,7 +1244,7 @@ const replaceUnsafeCharsInVariableIds = function (targets) {
 const deserialize = function (json, runtime, zip, isSingleSprite) {
     const extensions = {
         extensionIDs: new Set(),
-        extensionURLs: new Map()
+        extensionURLs: new Map(json.extensionURLs)
     };
 
     // Store the origin field (e.g. project originated at CSFirst) so that we can save it again.
