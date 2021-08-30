@@ -546,7 +546,17 @@ const serialize = function (runtime, targetId) {
 
     const serializedTargets = flattenedOriginalTargets.map(t => serializeTarget(t, extensions));
 
+    // Assemble map of ID -> URL for extensions.
+    const extensionURLs = [];
+    extensions.forEach(id => {
+        const extensionInfo = runtime._blockInfo.find(info => info.id === id);
+        if (extensionInfo){
+            extensionURLs.push([id, extensionInfo.extensionURL]);
+        }
+    });
+
     if (targetId) {
+        serializedTargets[0].extensionURLs = extensionURLs;
         return serializedTargets[0];
     }
 
@@ -556,15 +566,7 @@ const serialize = function (runtime, targetId) {
 
     // Assemble extension list
     obj.extensions = Array.from(extensions);
-
-    // Assemble map of ID -> URL for extensions.
-    obj.extensionURLs = [];
-    obj.extensions.forEach(id => {
-        const extensionInfo = runtime._blockInfo.find(info => info.id === id);
-        if (extensionInfo){
-            obj.extensionURLs.push([id, extensionInfo.extensionURL]);
-        }
-    });
+    obj.extensionURLs = extensionURLs;
 
     // Assemble metadata
     const meta = Object.create(null);
