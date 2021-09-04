@@ -1,7 +1,6 @@
 const dispatch = require('../dispatch/central-dispatch');
 const log = require('../util/log');
 const maybeFormatMessage = require('../util/maybe-format-message');
-const formatMessage = require('format-message');
 
 const BlockType = require('./block-type');
 
@@ -94,7 +93,6 @@ class ExtensionManager {
          * @type {Runtime}
          */
         this.runtime = runtime;
-        this.runtime.formatMessage = formatMessage;
 
         dispatch.setService('extensions', this).catch(e => {
             log.error(`ExtensionManager was unable to register extension service: ${JSON.stringify(e)}`);
