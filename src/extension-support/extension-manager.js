@@ -162,9 +162,8 @@ class ExtensionManager {
      * @returns {object} Block object which was registered.
      */
     registerExtensionBlock (entry, blockClass) {
-        const runtime = this.runtime;
-        const block = new blockClass(runtime);
-        const extensionID = block.getInfo().id;
+        const extensionInstance = new blockClass(this.runtime);
+        const extensionID = extensionInstance.getInfo().id;
         if (entry.extensionId !== extensionID) {
             // Reject by the security risk.
             throw new Error(`Extension ID mismatch entry: '${entry.extensionId}' block: '${extensionID}'`);
@@ -176,12 +175,12 @@ class ExtensionManager {
             // Remove from dispatcher
             delete dispatch.services[oldServiceName];
             // Remove from block info
-            const oldeBlockInfoIndex = runtime._blockInfo.findIndex(info => info.id === extensionID);
-            if (oldeBlockInfoIndex >= 0) {
-                runtime._blockInfo.splice(oldeBlockInfoIndex, 1);
+            const oldBlockInfoIndex = this.runtime._blockInfo.findIndex(info => info.id === extensionID);
+            if (oldBlockInfoIndex >= 0) {
+                this.runtime._blockInfo.splice(oldBlockInfoIndex, 1);
             }
         }
-        const serviceName = this._registerInternalExtension(block);
+        const serviceName = this._registerInternalExtension(extensionInstance);
         this._loadedExtensions.set(extensionID, serviceName);
         const oldEntryIndex = this.extensionLibraryContent
             .findIndex(libEntry => libEntry.extensionId === extensionID);
@@ -192,7 +191,7 @@ class ExtensionManager {
         if (this.extensionLibraryContent) {
             this.extensionLibraryContent.unshift(entry);
         }
-        return block;
+        return extensionInstance;
     }
 
     /**
@@ -216,25 +215,25 @@ class ExtensionManager {
             return Promise.resolve();
         }
 
+        // Find a builtin extension which have the extensionURL.
         const builtinClassFunc = Object.values(builtinExtensions)
             .find(blockClassFunc => blockClassFunc().extensionURL === extensionURL);
         if (builtinClassFunc) {
             const blockClass = builtinClassFunc();
-            const block = new blockClass(this.runtime);
-            const serviceName = this._registerInternalExtension(block);
+            const extensionInstance = new blockClass(this.runtime);
+            const serviceName = this._registerInternalExtension(extensionInstance);
             this._loadedExtensions.set(blockClass.EXTENSION_ID, serviceName);
             return Promise.resolve();
         }
 
-        // To access the runtime even in outer extensions, it loaded by dynamic import() istead of extension-worker.
+        // To access the runtime even in outer extensions, it loaded by dynamic import() instead of extension-worker.
         return this.fetchExtension(extensionURL)
             .then(({entry, blockClass}) => {
                 this.registerExtensionBlock(entry, blockClass);
-                return Promise.resolve();
             })
             .catch(error => {
                 log.log(error);
-                return Promise.reject(error);
+                // Ignore error to continue loading lest of the project data.
             });
     }
 
