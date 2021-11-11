@@ -17,7 +17,6 @@ const StageLayering = require('./stage-layering');
 const Variable = require('./variable');
 const xmlEscape = require('../util/xml-escape');
 const ScratchLinkWebSocket = require('../util/scratch-link-websocket');
-const formatMessage = require('format-message');
 
 // Virtual I/O devices.
 const Clock = require('../io/clock');
@@ -400,11 +399,6 @@ class Runtime extends EventEmitter {
          * @type {?string}
          */
         this.origin = null;
-
-        /**
-         * Message formatter for extensions of Xcratch.
-         */
-        this.formatMessage = formatMessage;
     }
 
     /**
