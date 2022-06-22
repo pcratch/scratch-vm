@@ -120,7 +120,7 @@ class WebBLE {
                         const dataView = event.target.value;
                         onCharacteristicChanged(uint8ArrayToBase64(new Uint8Array(dataView.buffer)));
                     });
-                characteristic.startNotifications();
+                return characteristic.startNotifications();
             });
     }
 
@@ -138,7 +138,8 @@ class WebBLE {
             .then(service => service.getCharacteristic(characteristicId))
             .then(characteristic => {
                 if (optStartNotifications) {
-                    this.startNotifications(serviceId, characteristicId, onCharacteristicChanged);
+                    return this.startNotifications(serviceId, characteristicId, onCharacteristicChanged)
+                        .then(() => characteristic.readValue());
                 }
                 return characteristic.readValue();
             })
